@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tablero EEFF · Inversiones y Servicios Generales S.R.L.</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#0f172a; --panel:#131c2e; --panel2:#182238;
+    --border:#243049; --border2:#2d3b57;
+    --txt:#e6edf7; --muted:#94a3b8; --muted2:#64748b;
+    --acc:#38bdf8; --acc2:#22c55e;
+    --activo:#38bdf8; --pasivo:#f97316; --patrimonio:#a78bfa; --ingreso:#22c55e; --gasto:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--txt); min-height:100vh;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(56,189,248,.14), transparent 60%),
+      radial-gradient(900px 500px at -5% 0%, rgba(34,197,94,.10), transparent 55%),
+      linear-gradient(180deg,#0b1220 0%, #0a0f1c 100%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1400px;margin:0 auto;padding:22px 20px 60px}
+
+  /* Header */
+  header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:18px}
+  .brand h1{margin:0;font-size:1.5rem;letter-spacing:.2px}
+  .brand h1 span{color:var(--acc)}
+  .brand p{margin:5px 0 0;color:var(--muted);font-size:.85rem}
+  .badges{display:flex;gap:8px;flex-wrap:wrap}
+  .badge{background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.28);color:#bae6fd;
+         padding:5px 10px;border-radius:999px;font-size:.74rem;font-weight:600}
+
+  /* Dropzone */
+  .dropzone{
+    border:1.6px dashed var(--border2); border-radius:16px; background:linear-gradient(180deg,rgba(19,28,46,.75),rgba(15,23,42,.55));
+    padding:22px; text-align:center; cursor:pointer; transition:.18s ease; margin-bottom:16px;
+  }
+  .dropzone:hover{border-color:var(--acc);background:rgba(56,189,248,.06)}
+  .dropzone.over{border-color:var(--acc2);background:rgba(34,197,94,.10);transform:translateY(-1px)}
+  .dropzone .ico{font-size:1.7rem;line-height:1}
+  .dropzone h3{margin:8px 0 4px;font-size:1rem}
+  .dropzone p{margin:0;color:var(--muted);font-size:.82rem}
+  .dropzone b{color:var(--acc)}
+  .dz-hint{margin-top:10px;font-size:.76rem;color:var(--muted2)}
+
+  /* Status */
+  .status{margin:0 0 16px;padding:11px 14px;border-radius:12px;font-size:.84rem;display:none}
+  .status.ok{display:block;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
+  .status.err{display:block;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#fecaca}
+
+  /* KPIs */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 15px;position:relative;overflow:hidden}
+  .kpi::after{content:"";position:absolute;left:0;top:0;height:100%;width:3px;background:var(--acc)}
+  .kpi.green::after{background:var(--acc2)} .kpi.red::after{background:var(--gasto)} .kpi.violet::after{background:var(--patrimonio)}
+  .kpi .lbl{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .kpi .val{font-size:1.28rem;font-weight:700;margin-top:6px}
+  .kpi .sub{font-size:.72rem;color:var(--muted2);margin-top:3px}
+
+  /* Grid + cards */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--border);border-radius:16px;padding:16px 16px 8px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .card-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .card-head h2{margin:0;font-size:.98rem}
+  .card-head p{margin:3px 0 0;color:var(--muted);font-size:.76rem}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .controls label{font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:5px}
+  select{
+    background:#0e1626;color:var(--txt);border:1px solid var(--border2);border-radius:9px;
+    padding:6px 9px;font-size:.78rem;outline:none;cursor:pointer
+  }
+  select:focus{border-color:var(--acc)}
+  input[type=checkbox]{accent-color:var(--acc);cursor:pointer}
+  .plot{width:100%;height:370px}
+
+  footer{margin-top:24px;color:var(--muted2);font-size:.76rem;text-align:center;line-height:1.6}
+  footer code{background:#0e1626;border:1px solid var(--border);padding:1px 6px;border-radius:6px;color:#bae6fd}
+
+  @media (max-width:1000px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <h1>Tablero de <span>Estados Financieros</span> · 2025</h1>
+      <p>Inversiones y Servicios Generales S.R.L. — Balance de Comprobación · cifras en Bs</p>
+    </div>
+    <div class="badges">
+      <span class="badge">100% frontend</span>
+      <span class="badge">PapaParse</span>
+      <span class="badge">Plotly.js</span>
+    </div>
+  </header>
+
+  <!-- Drag & drop -->
+  <div class="dropzone" id="dropzone">
+    <div class="ico">📊</div>
+    <h3>Arrastra aquí el archivo <b>datos_eeff.csv</b></h3>
+    <p>… o haz clic para seleccionarlo desde tu equipo.</p>
+    <div class="dz-hint">Se procesa localmente en tu navegador · no se sube nada a internet</div>
+    <input type="file" id="fileInput" accept=".csv,text/csv" hidden />
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <!-- KPIs -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- Charts -->
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>1 · Comparativa de Ventas / Ingresos</h2>
+          <p>Barras · cuentas principales por sector o ranking de cuentas</p>
+        </div>
+        <div class="controls">
+          <select id="g1mode">
+            <option value="sector">Suma por sector</option>
+            <option value="cuentas">Top 15 cuentas</option>
+          </select>
+        </div>
+      </div>
+      <div class="plot" id="g1"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>2 · Estructura de Costos / Margen</h2>
+          <p>Torta · distribución porcentual por sector o gasto</p>
+        </div>
+        <div class="controls">
+          <select id="g2mode">
+            <option value="sector">Por sector</option>
+            <option value="gastos">Detalle de gastos</option>
+          </select>
+        </div>
+      </div>
+      <div class="plot" id="g2"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>3 · Rentabilidad vs. Eficiencia</h2>
+          <p>Dispersión · variables cruzadas (elige los ejes)</p>
+        </div>
+        <div class="controls">
+          <label>X <select id="g3x"></select></label>
+          <label>Y <select id="g3y"></select></label>
+          <label><input type="checkbox" id="g3log" /> log</label>
+        </div>
+      </div>
+      <div class="plot" id="g3"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>4 · Distribución de Resultados</h2>
+          <p>Caja (box plot) · dispersión de saldos por sector</p>
+        </div>
+        <div class="controls">
+          <select id="g4metric"></select>
+          <label><input type="checkbox" id="g4log" checked /> log</label>
+        </div>
+      </div>
+      <div class="plot" id="g4"></div>
+    </div>
+
+  </div>
+
+  <footer>
+    Carga <code>datos_eeff.csv</code> generado desde <code>Analisis_EEFF_Pasos_1_y_2.xlsx</code> (hoja <code>Datos</code>).
+    Las cuentas con saldo 0 se excluyen en las vistas que usan escala logarítmica.
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   Tablero EEFF — lógica 100% frontend
+   ============================================================ */
+"use strict";
+
+const COLOR = {
+  Activo:"#38bdf8", Pasivo:"#f97316", Patrimonio:"#a78bfa", Ingreso:"#22c55e", Gasto:"#ef4444"
+};
+const TIPOS = ["Activo","Pasivo","Patrimonio","Ingreso","Gasto"];
+
+const NUM_FIELDS = [
+  {key:"DEBE",           label:"Debe (movimiento)"},
+  {key:"HABER",          label:"Haber (movimiento)"},
+  {key:"SALDO_DEUDOR",   label:"Saldo deudor"},
+  {key:"SALDO_ACREEDOR", label:"Saldo acreedor"},
+  {key:"SALDO_ABS",      label:"Saldo absoluto (tamaño)"}
+];
+
+const el = s => document.querySelector(s);
+const rows = [];           // datos normalizados
+let listo = false;
+
+/* ---------- utilidades ---------- */
+const fmt = n => (n==null||isNaN(n)) ? "–"
+  : Number(n).toLocaleString("es-BO",{minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtShort = n => {
+  const a = Math.abs(n);
+  if(a>=1e6) return (n/1e6).toFixed(2)+" M";
+  if(a>=1e3) return (n/1e3).toFixed(1)+" k";
+  return fmt(n);
+};
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const corta = (s,n=30) => { s=String(s==null?"":s); return s.length>n ? s.slice(0,n-1)+"…" : s; };
+
+function setStatus(msg, tipo){
+  const s = el("#status");
+  s.className = "status" + (tipo ? " "+tipo : "");
+  s.innerHTML = msg;
+}
+function rgba(hex,a){
+  const h = hex.replace("#",""); const r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+function colorDe(tipo){
+  if(COLOR[tipo]) return COLOR[tipo];
+  const norm = String(tipo||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  for(const k in COLOR){ if(norm.includes(k.toLowerCase())) return COLOR[k]; }
+  return "#64748b";
+}
+
+/* ---------- normalización de columnas (tolerante) ---------- */
+function normKey(s){ return String(s==null?"":s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+function canon(k){
+  const n = normKey(k);
+  if(!n) return null;
+  if(n === "CODIGO") return "CODIGO";
+  if(n.startsWith("NOMBRE")) return "NOMBRE";
+  if(n.includes("TIPO") && n.includes("CUENTA")) return "TIPO_CUENTA";
+  if(n === "TIPO") return "TIPO";
+  if(n === "DEBE") return "DEBE";
+  if(n === "HABER") return "HABER";
+  if(n.includes("DEUDOR")) return "SALDO_DEUDOR";
+  if(n.includes("ACREEDOR")) return "SALDO_ACREEDOR";
+  if(n.startsWith("SALDOABS") || n === "SALDOABS") return "SALDO_ABS";
+  return null;
+}
+function toNum(v){
+  if(v==null) return 0;
+  if(typeof v === "number") return isFinite(v) ? v : 0;
+  let s = String(v).trim();
+  if(s==="" || s==="-" || s==="–" || s==="—" || /^n\/?a$/i.test(s)) return 0;
+  s = s.replace(/\s/g,"").replace(/[^\d.,\-]/g,"");
+  if(s.includes(",") && s.includes(".")) s = s.replace(/,/g,"");
+  else if(s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+/* Construye las filas normalizadas a partir de los objetos crudos de PapaParse */
+function preparar(data){
+  if(!Array.isArray(data) || !data.length){ setStatus("El archivo no contiene filas.", "err"); return null; }
+
+  // mapea nombre de columna real -> campo canónico
+  const map = {};                       // canon -> key real
+  Object.keys(data[0]).forEach(k=>{ const c = canon(k); if(c && !(c in map)) map[c] = k; });
+
+  const faltan = ["CODIGO","NOMBRE","DEBE","HABER","SALDO_ABS"].filter(c => !(c in map));
+  if(faltan.length){
+    setStatus(`No se reconocen columnas obligatorias: <b>${faltan.join(", ")}</b>. `+
+              `Encabezados leídos: ${Object.keys(data[0]).join(", ")}.`, "err");
+    return null;
+  }
+
+  const tmp = [];
+  data.forEach(d=>{
+    const get = c => (c in map) ? d[map[c]] : undefined;
+    const codigo = String(get("CODIGO")==null?"":get("CODIGO")).trim();
+    const nombre = String(get("NOMBRE")==null?"":get("NOMBRE")).trim();
+    if(!codigo && !nombre) return;                       // fila vacía
+    if(/^total/i.test(nombre)) return;                   // fila de control TOTALES
+
+    const debe = toNum(get("DEBE")), haber = toNum(get("HABER"));
+    const sd = toNum(get("SALDO_DEUDOR")), sa = toNum(get("SALDO_ACREEDOR"));
+    let sAbs = toNum(get("SALDO_ABS"));
+    if(!sAbs) sAbs = sd + sa;                            // respaldo si viene vacío
+
+    let tipoCuenta = String(get("TIPO_CUENTA")==null?"":get("TIPO_CUENTA")).trim();
+    let tipo = String(get("TIPO")==null?"":get("TIPO")).trim();
+    if(!tipo && tipoCuenta) tipo = tipoCuenta.split("-").pop().trim();
+    // normaliza a una de las 5 categorías conocidas (por prefijo o nombre)
+    const tNorm = tipo.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+    const encontrado = TIPOS.find(t => tNorm.includes(t.toLowerCase()));
+    tipo = encontrado || (tipo || "Sin clasificar");
+    if(!tipoCuenta) tipoCuenta = tipo;
+
+    tmp.push({CODIGO:codigo, NOMBRE:nombre, TIPO_CUENTA:tipoCuenta, TIPO:tipo, DEBE:debe, HABER:haber, SALDO_DEUDOR:sd, SALDO_ACREEDOR:sa, SALDO_ABS:sAbs});
+  });
+
+  if(!tmp.length){ setStatus("No se encontraron cuentas válidas en el CSV.", "err"); return null; }
+
+  // detecta tipo de cambio implícito: si un TIPO tiene un solo valor distinto por cuenta, seguimos
+  return tmp;
+}
+
+/* ---------- arranque tras parsear ---------- */
+function cargarTexto(texto, nombreArchivo){
+  if(typeof Papa === "undefined"){
+    setStatus("No se pudo cargar la librería <b>PapaParse</b>. Revisa tu conexión a internet.", "err");
+    return;
+  }
+  Papa.parse(texto, {
+    header:true, dynamicTyping:true, skipEmptyLines:"greedy",
+    transformHeader: h => String(h).replace(/^\uFEFF/,"").trim(),
+    complete: res => finalizar(res.data, nombreArchivo),
+    error: err => setStatus("Error al leer el CSV: " + esc(err.message), "err")
+  });
+}
+
+function cargarArchivo(file){
+  if(typeof Papa === "undefined"){
+    setStatus("No se pudo cargar la librería <b>PapaParse</b>. Revisa tu conexión a internet.", "err");
+    return;
+  }
+  setStatus(`Procesando <b>${esc(file.name)}</b>…`);
+  Papa.parse(file, {
+    header:true, dynamicTyping:true, skipEmptyLines:"greedy",
+    transformHeader: h => String(h).replace(/^\uFEFF/,"").trim(),
+    complete: res => finalizar(res.data, file.name),
+    error: err => setStatus("Error al leer el CSV: " + esc(err.message), "err")
+  });
+}
+
+function finalizar(data, nombreArchivo){
+  const nuevos = preparar(data);
+  if(!nuevos) return;
+  rows.length = 0; rows.push(...nuevos);
+  listo = true;
+
+  renderKPIs();
+  renderTodos();
+
+  const total = rows.reduce((a,r)=>a+r.SALDO_ABS,0);
+  setStatus(`✅ Cargado <b>${esc(nombreArchivo||"CSV")}</b> · ${rows.length} cuentas · saldo absoluto total <b>${fmt(total)} Bs</b>.`, "ok");
+  if(window.Plotly) setTimeout(()=>[ "#g1","#g2","#g3","#g4" ].forEach(id=>Plotly.Plots.resize(el(id))), 60);
+}
+
+/* ---------- layout base de Plotly ---------- */
+function baseLayout(extra){
+  return Object.assign({
+    paper_bgcolor:"rgba(0,0,0,0)",
+    plot_bgcolor:"rgba(0,0,0,0)",
+    font:{color:"#cbd5e1", family:"Inter, system-ui, sans-serif", size:12},
+    margin:{l:64,r:22,t:16,b:56},
+    hoverlabel:{bgcolor:"#0b1220", bordercolor:"#334155", font:{color:"#e2e8f0"}},
+    showlegend:false,
+    xaxis:{gridcolor:"rgba(148,163,184,.13)", zerolinecolor:"rgba(148,163,184,.28)", linecolor:"rgba(148,163,184,.35)", tickfont:{size:11}},
+    yaxis:{gridcolor:"rgba(148,163,184,.13)", zerolinecolor:"rgba(148,163,184,.28)", linecolor:"rgba(148,163,184,.35)", tickfont:{size:11}}
+  }, extra || {});
+}
+const CONFIG = {responsive:true, displaylogo:false, modeBarButtonsToRemove:["lasso2d","select2d","autoScale2d"],
+                toImageButtonOptions:{format:"png", filename:"tablero_eeff"}};
+
+function asegurar(){ return listo && !!window.Plotly; }
+
+/* ---------- KPIs ---------- */
+function renderKPIs(){
+  const total = rows.reduce((a,r)=>a+r.SALDO_ABS,0);
+  const ing = rows.filter(r=>r.TIPO==="Ingreso").reduce((a,r)=>a+r.SALDO_ABS,0);
+  const gas = rows.filter(r=>r.TIPO==="Gasto").reduce((a,r)=>a+r.SALDO_ABS,0);
+  const res = ing - gas;
+  const sectores = new Set(rows.map(r=>r.TIPO)).size;
+  const cards = [
+    {cls:"",      lbl:"Cuentas analizadas", val:rows.length, sub:`${sectores} sectores`},
+    {cls:"",      lbl:"Saldo absoluto total", val:fmtShort(total)+" Bs", sub:"Σ (deudor + acreedor)"},
+    {cls:"green", lbl:"Ingresos", val:fmtShort(ing)+" Bs", sub:`${rows.filter(r=>r.TIPO==="Ingreso").length} cuentas`},
+    {cls:"red",   lbl:"Gastos", val:fmtShort(gas)+" Bs", sub:`${rows.filter(r=>r.TIPO==="Gasto").length} cuentas`},
+    {cls:res>=0?"green":"red", lbl:"Resultado (Ing − Gas)", val:(res>=0?"+":"−")+fmtShort(Math.abs(res))+" Bs", sub:"Ingresos menos gastos"}
+  ];
+  el("#kpis").innerHTML = cards.map(c=>`
+    <div class="kpi ${c.cls}">
+      <div class="lbl">${c.lbl}</div>
+      <div class="val">${c.val}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join("");
+}
+
+/* ---------- Gráfico 1: Barras ---------- */
+function renderG1(){
+  if(!asegurar()) return;
+  const mode = el("#g1mode").value;
+  let trace, layout;
+
+  if(mode === "cuentas"){
+    const top = rows.slice().sort((a,b)=>b.SALDO_ABS-a.SALDO_ABS).slice(0,15).reverse();
+    trace = {
+      type:"bar", orientation:"h",
+      x: top.map(r=>r.SALDO_ABS),
+      y: top.map(r=>corta(r.NOMBRE)),
+      marker:{color: top.map(r=>colorDe(r.TIPO)), line:{color:"rgba(0,0,0,.35)", width:1}},
+      customdata: top.map(r=>[r.NOMBRE, r.TIPO, fmt(r.SALDO_ABS)]),
+      hovertemplate:"<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{customdata[2]} Bs<extra></extra>",
+      text: top.map(r=>fmtShort(r.SALDO_ABS)),
+      textposition:"outside", cliponaxis:false, textfont:{size:10, color:"#cbd5e1"}
+    };
+    layout = baseLayout({
+      margin:{l:210,r:70,t:8,b:44}, showlegend:false,
+      xaxis:{title:{text:"Saldo absoluto (Bs)", font:{size:11}}, gridcolor:"rgba(148,163,184,.13)", tickformat:"~s"},
+      yaxis:{automargin:true, tickfont:{size:10.5}}
+    });
+  } else {
+    const sumas = {}; TIPOS.forEach(t=>sumas[t]=0);
+    rows.forEach(r=>{ sumas[r.TIPO] = (sumas[r.TIPO]||0) + r.SALDO_ABS; });
+    const labels = TIPOS.filter(t=>sumas[t] > 0);
+    const vals = labels.map(t=>sumas[t]);
+    trace = {
+      type:"bar",
+      x: labels, y: vals,
+      marker:{color: labels.map(t=>colorDe(t)), line:{color:"rgba(0,0,0,.35)", width:1}},
+      hovertemplate:"<b>%{x}</b><br>%{y:,.2f} Bs<extra></extra>",
+      text: vals.map(v=>fmtShort(v)), textposition:"outside", cliponaxis:false, textfont:{size:10.5}
+    };
+    layout = baseLayout({
+      margin:{l:64,r:20,t:18,b:48}, showlegend:false,
+      xaxis:{tickfont:{size:11.5}},
+      yaxis:{title:{text:"Saldo absoluto (Bs)", font:{size:11}}, gridcolor:"rgba(148,163,184,.13)", tickformat:"~s", rangemode:"tozero"}
+    });
+  }
+  Plotly.react(el("#g1"), [trace], layout, CONFIG);
+}
+
+/* ---------- Gráfico 2: Torta ---------- */
+function renderG2(){
+  if(!asegurar()) return;
+  const mode = el("#g2mode").value;
+  let labels, vals, colors;
+
+  if(mode === "gastos"){
+    let g = rows.filter(r=>r.TIPO==="Gasto" && r.SALDO_ABS>0).sort((a,b)=>b.SALDO_ABS-a.SALDO_ABS);
+    if(g.length > 8){
+      const top = g.slice(0,8);
+      const otros = g.slice(8).reduce((a,r)=>a+r.SALDO_ABS,0);
+      labels = top.map(r=>corta(r.NOMBRE,26));
+      vals = top.map(r=>r.SALDO_ABS);
+      if(otros>0){ labels.push("Otros gastos"); vals.push(otros); }
+    } else { labels = g.map(r=>corta(r.NOMBRE,26)); vals = g.map(r=>r.SALDO_ABS); }
+    const palette = ["#ef4444","#f97316","#f59e0b","#eab308","#fb7185","#f43f5e","#c084fc","#fca5a5","#64748b"];
+    colors = labels.map((_,i)=>palette[i % palette.length]);
+  } else {
+    const sumas = {}; TIPOS.forEach(t=>sumas[t]=0);
+    rows.forEach(r=>{ sumas[r.TIPO] = (sumas[r.TIPO]||0) + r.SALDO_ABS; });
+    labels = TIPOS.filter(t=>sumas[t] > 0);
+    vals = labels.map(t=>sumas[t]);
+    colors = labels.map(t=>colorDe(t));
+  }
+
+  const trace = {
+    type:"pie", labels, values:vals, hole:.45, sort:false,
+    marker:{colors, line:{color:"#0b1220", width:2}},
+    textinfo:"label+percent", textposition:"outside",
+    textfont:{size:11, color:"#cbd5e1"},
+    hovertemplate:"<b>%{label}</b><br>%{value:,.2f} Bs<br>%{percent}<extra></extra>"
+  };
+  const layout = baseLayout({
+    margin:{l:16,r:16,t:10,b:10}, showlegend:false,
+    xaxis:{visible:false}, yaxis:{visible:false}
+  });
+  Plotly.react(el("#g2"), [trace], layout, CONFIG);
+}
+
+/* ---------- Gráfico 3: Dispersión ---------- */
+function renderG3(){
+  if(!asegurar()) return;
+  const xk = el("#g3x").value, yk = el("#g3y").value;
+  const usarLog = el("#g3log").checked;
+  const lbl = k => (NUM_FIELDS.find(f=>f.key===k)||{}).label || k;
+
+  const traces = [];
+  TIPOS.forEach(t=>{
+    let d = rows.filter(r=>r.TIPO===t);
+    if(usarLog) d = d.filter(r=>r[xk]>0 && r[yk]>0);
+    if(!d.length) return;
+    traces.push({
+      type:"scatter", mode:"markers", name:t,
+      x:d.map(r=>r[xk]), y:d.map(r=>r[yk]),
+      customdata:d.map(r=>[r.NOMBRE, r.TIPO, fmt(r[xk]), fmt(r[yk])]),
+      hovertemplate:"<b>%{customdata[0]}</b><br>%{customdata[1]}<br>"+
+                    lbl(xk)+": %{customdata[2]}<br>"+lbl(yk)+": %{customdata[3]}<extra></extra>",
+      marker:{color:colorDe(t), size:11, opacity:.85, line:{color:"#0b1220", width:1.2}}
+    });
+  });
+
+  const layout = baseLayout({
+    margin:{l:70,r:22,t:12,b:58},
+    showlegend:true,
+    legend:{orientation:"h", y:1.14, x:0, font:{size:10.5}, bgcolor:"rgba(0,0,0,0)"},
+    xaxis:{title:{text:lbl(xk)+" (Bs)", font:{size:11}}, type:usarLog?"log":"linear",
+           gridcolor:"rgba(148,163,184,.13)", tickformat:"~s"},
+    yaxis:{title:{text:lbl(yk)+" (Bs)", font:{size:11}}, type:usarLog?"log":"linear",
+           gridcolor:"rgba(148,163,184,.13)", tickformat:"~s"}
+  });
+  Plotly.react(el("#g3"), traces, layout, CONFIG);
+}
+
+/* ---------- Gráfico 4: Caja ---------- */
+function renderG4(){
+  if(!asegurar()) return;
+  const metric = el("#g4metric").value;
+  const usarLog = el("#g4log").checked;
+  const lbl = (NUM_FIELDS.find(f=>f.key===metric)||{}).label || metric;
+
+  const traces = [];
+  TIPOS.forEach(t=>{
+    const vals = rows.filter(r=>r.TIPO===t && r[metric] > 0).map(r=>r[metric]);
+    if(!vals.length) return;
+    traces.push({
+      type:"box", name:t, y:vals,
+      boxpoints:"all", jitter:.45, pointpos:0,
+      marker:{color:colorDe(t), size:5, opacity:.75},
+      line:{color:colorDe(t), width:1.6},
+      fillcolor:rgba(colorDe(t), .30),
+      hovertemplate:"<b>"+t+"</b><br>%{y:,.2f} Bs<extra></extra>"
+    });
+  });
+
+  const layout = baseLayout({
+    margin:{l:74,r:22,t:12,b:50},
+    showlegend:false,
+    xaxis:{tickfont:{size:11.5}},
+    yaxis:{title:{text:lbl+" (Bs)", font:{size:11}}, type:usarLog?"log":"linear",
+           gridcolor:"rgba(148,163,184,.13)", tickformat:"~s"}
+  });
+  Plotly.react(el("#g4"), traces, layout, CONFIG);
+}
+
+function renderTodos(){ renderG1(); renderG2(); renderG3(); renderG4(); }
+
+/* ---------- controles ---------- */
+function llenarSelects(){
+  const numOpts = NUM_FIELDS.map(f=>`<option value="${f.key}">${f.label}</option>`).join("");
+  el("#g3x").innerHTML = numOpts;
+  el("#g3y").innerHTML = numOpts;
+  el("#g4metric").innerHTML = numOpts;
+  el("#g3x").value = "DEBE";
+  el("#g3y").value = "HABER";
+  el("#g4metric").value = "SALDO_ABS";
+}
+
+/* ---------- evento drag & drop ---------- */
+const dz = el("#dropzone");
+const fi = el("#fileInput");
+dz.addEventListener("click", ()=> fi.click());
+fi.addEventListener("change", e => { if(e.target.files[0]) cargarArchivo(e.target.files[0]); fi.value=""; });
+
+["dragenter","dragover"].forEach(ev=>{
+  dz.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); dz.classList.add("over"); });
+});
+["dragleave","drop"].forEach(ev=>{
+  dz.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); if(ev==="dragleave") dz.classList.remove("over"); });
+});
+dz.addEventListener("drop", e=>{
+  dz.classList.remove("over");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) cargarArchivo(f);
+});
+// evita que el navegador abra el archivo si se suelta fuera de la zona
+["dragover","drop"].forEach(ev=> window.addEventListener(ev, e=>e.preventDefault()));
+
+/* ---------- init ---------- */
+llenarSelects();
+["#g1mode","#g2mode","#g3x","#g3y","#g3log","#g4metric","#g4log"].forEach(id=>{
+  el(id).addEventListener("change", renderTodos);
+});
+window.addEventListener("resize", ()=>{ if(window.Plotly){ ["#g1","#g2","#g3","#g4"].forEach(id=>Plotly.Plots.resize(el(id))); } });
+
+// hook para pruebas / integración
+window.cargarCSV = cargarTexto;
+
+// si no hay datos aún, deja los gráficos con un mensaje
+if(document.readyState !== "loading") setStatus("Esperando el archivo <b>datos_eeff.csv</b>… arrástralo en la zona superior.");
+else document.addEventListener("DOMContentLoaded", ()=>setStatus("Esperando el archivo <b>datos_eeff.csv</b>… arrástralo en la zona superior."));
+</script>
+</body>
+</html>
